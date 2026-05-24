@@ -153,6 +153,57 @@ docker compose -f deploy/docker-compose.yml logs -f app worker
 
 ---
 
+## 6.5. 디스크 레이아웃과 볼륨
+
+```
+<repo-root>/
+  data/
+    extracts/                    ← 호스트 bind mount, finder/탐색기에서 직접 접근
+      <job_id>/
+        result.csv               (성공 시)
+        result.csv.part          (진행 중)
+```
+
+볼륨 구성:
+
+| 볼륨 이름            | 종류         | 호스트 위치                       | 이유                              |
+| --------------- | ---------- | ---------------------------- | ------------------------------- |
+| 결과 파일            | bind mount | `./data/extracts/`           | 사용자가 직접 봐야 하는 파일. 백업/검수 편의.     |
+| Postgres 데이터     | named volume | Docker가 관리 (호스트 직접 접근 X)    | 내부 바이너리. 호스트에 두면 UID 충돌·실수 위험. |
+| MySQL (dev seed) 데이터 | named volume | Docker가 관리                | 동일                              |
+| `app/static/`   | bind mount (ro) | repo의 `app/static/`         | admin.html 핫리로드.                |
+
+named volume 위치 확인이 꼭 필요하면:
+```bash
+docker volume inspect extract-api_pg-data
+docker volume inspect extract-api_mysql-data
+```
+
+### 다운로드 파일명 규칙
+
+`Content-Disposition`이 제안하는 파일명:
+
+```
+<key_label>_<dataset>_<created_at_utc>_<shortid>.<ext>
+```
+
+예: `data-team-jan_events_20260125T134544Z_8d6f.csv`
+
+구성 요소:
+
+| 자리          | 내용                                                                     |
+| ----------- | ---------------------------------------------------------------------- |
+| `key_label` | 잡을 만든 API 키의 라벨. 영숫자·`.`·`-`·`_`만 남기고 lowercased, 32자로 절단. 빈 값이면 `unlabeled`. |
+| `dataset`   | 추출 대상 데이터셋 이름 (`events` 등)                                              |
+| `created_at_utc` | 요청 시각 UTC, 압축 ISO (`yyyymmddThhmmssZ`) — 텍스트 정렬해도 시간 순                |
+| `shortid`   | job_id UUID의 첫 8자 — 같은 초의 충돌 회피, 필요 시 admin 패널/DB에서 역추적                |
+
+데이터의 시간 범위(filter `from/to`)는 파일명에 포함하지 않습니다. 일부 dataset은 시간 필터가 없을 수 있고, 파일명이 길어집니다. 시간 범위는 admin 패널의 `filters` 컬럼이나 `GET /v1/extracts/{id}`에서 확인.
+
+디스크 상의 실제 파일명은 항상 `result.csv` — 클라이언트에게 보내줄 때만 이 의미 있는 이름으로 wrap합니다.
+
+---
+
 ## 7. 운영 작업
 
 ### 스택 라이프사이클
@@ -241,7 +292,8 @@ SOURCE_DB=...
 | 잡이 영영 `queued`에서 안 움직임                   | `docker compose ps`로 worker 상태 확인. Redis 헬스도 함께.                              |
 | `failed` + `error_class=ExtractTooLarge`  | 사용자 필터가 너무 넓음. 안내하거나 `EXTRACT_MAX_ROWS` 상향.                                   |
 | 인증/만료된 키 호출이 자꾸 옴                         | 패널 → Recent extracts 필터로 해당 키의 패턴 확인 후 사용자에게 갱신 안내.                            |
-| 디스크 부족                                    | `extract-data` 볼륨 점검. 보존 기간(`EXTRACT_RETENTION_HOURS`) 단축 또는 청소 sweeper 도입.   |
+| 디스크 부족                                    | `./data/extracts` 점검. 보존 기간(`EXTRACT_RETENTION_HOURS`) 단축 또는 청소 sweeper 도입.    |
+| 다운로드가 404, 잡은 `succeeded`로 보임             | 옛 named volume(`extract-api_extract-data`)에 파일이 남아있는데 코드가 bind mount를 봄. 옛 볼륨에서 `./data/extracts/`로 디렉터리 복사하거나, 잡을 새로 만들어 받으세요. |
 
 ---
 

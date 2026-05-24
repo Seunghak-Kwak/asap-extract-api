@@ -54,7 +54,9 @@ services:
       mysql:
         condition: service_healthy
     volumes:
-      - extract-data:/var/lib/extracts
+      # Results are bind-mounted so operators can browse them directly:
+      # <repo>/data/extracts/<job_id>/result.csv
+      - ../data/extracts:/var/lib/extracts
       # dev convenience: edit admin.html on the host and refresh the browser
       # — no rebuild needed. Safe in prod too (file resolves the same way).
       - ./../app/static:/app/app/static:ro
@@ -78,7 +80,7 @@ services:
       mysql:
         condition: service_healthy
     volumes:
-      - extract-data:/var/lib/extracts
+      - ../data/extracts:/var/lib/extracts
     command: arq app.workers.WorkerSettings
 
   nginx:
@@ -87,11 +89,10 @@ services:
       - app
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
-      - extract-data:/var/lib/extracts:ro
+      - ../data/extracts:/var/lib/extracts:ro
     ports:
       - "8080:80"
 
 volumes:
   pg-data:
   mysql-data:
-  extract-data:

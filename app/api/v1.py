@@ -1,3 +1,4 @@
+import re
 import uuid
 from datetime import datetime
 from typing import Any
@@ -177,10 +178,25 @@ async def download_extract(job_id: str, key: ApiKey = ApiKeyDep) -> Response:
             f"job is {job.status}, not downloadable",
         )
 
-    filename = f"{job.dataset}-{job.id}.{job.format}"
+    filename = _download_filename(job, key.label)
     headers = {
         "X-Accel-Redirect": paths.internal_url(job.id, job.format),
         "Content-Disposition": f'attachment; filename="{filename}"',
         "Content-Type": "text/csv; charset=utf-8",
     }
     return Response(status_code=200, headers=headers)
+
+
+_LABEL_SAFE = re.compile(r"[^A-Za-z0-9._-]+")
+
+
+def _sanitize_label(label: str) -> str:
+    cleaned = _LABEL_SAFE.sub("_", label).strip("._-").lower()
+    return cleaned[:32] or "unlabeled"
+
+
+def _download_filename(job: Job, label: str) -> str:
+    safe = _sanitize_label(label)
+    ts = job.created_at.strftime("%Y%m%dT%H%M%SZ")
+    short = job.id.split("-", 1)[0]
+    return f"{safe}_{job.dataset}_{ts}_{short}.{job.format}"

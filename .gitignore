@@ -9,5 +9,6 @@ __pycache__/
 .env.*
 !.env.example
 /var/
+/data/
 uv.lock
 extract-data/
