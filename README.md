@@ -208,6 +208,70 @@ REGISTRY = {
 
 ---
 
+## API 키 관리 (관리자 전용)
+
+키는 사용자가 직접 발급 신청하는 게 아니라 **관리자가 발급해서 전달**합니다.
+관리자 키(부트스트랩 키 또는 `is_admin=true`인 키)로 다음 엔드포인트를 호출하세요.
+
+### 새 키 발급
+
+```bash
+curl -X POST $API/v1/admin/api-keys \
+  -H "Authorization: Bearer $ADMIN_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "label": "data-team-jan",
+    "datasets": ["events"],
+    "expires_in_days": 90,
+    "is_admin": false
+  }'
+```
+
+응답:
+```json
+{
+  "key_id": "4d8963e5",
+  "full_key": "ek_live_4d8963e5_...",   ← 이 응답에서만 노출, 즉시 안전한 곳에 저장
+  "label": "data-team-jan",
+  "datasets": ["events"],
+  "is_admin": false,
+  "created_at": "2026-05-24T...",
+  "expires_at": "2026-08-22T..."
+}
+```
+
+`full_key`는 **이 응답에서만 보입니다.** 서버는 Argon2id 해시만 보관합니다.
+
+### 키 권한 모델
+
+| 필드          | 의미                                                                  |
+| ----------- | ------------------------------------------------------------------- |
+| `datasets`  | 추출 가능한 데이터셋 화이트리스트. `["events"]`, `["events","orders"]`, `["*"]`(전체) |
+| `is_admin`  | true면 `/v1/admin/*` 호출 가능 — 키 발급/조회/폐기 권한                            |
+| `expires_in_days` | 만료까지 일수. 생략하면 무기한.                                              |
+
+스코프 밖 데이터셋을 요청하면 `403 forbidden`, 만료/폐기된 키는 `401 unauthorized`.
+
+### 키 목록 / 폐기
+
+```bash
+# 목록 (secret은 보이지 않음)
+curl $API/v1/admin/api-keys -H "Authorization: Bearer $ADMIN_KEY"
+
+# 폐기 (disabled_at 세팅; 영구 삭제는 아님 — 감사 추적 용도)
+curl -X DELETE $API/v1/admin/api-keys/<key_id> -H "Authorization: Bearer $ADMIN_KEY"
+```
+
+자기 자신을 폐기하려고 하면 `400` — 잠금 사고를 막기 위한 안전장치.
+
+### 부트스트랩 키
+
+로컬/dev 환경에서 `.env`의 `BOOTSTRAP_API_KEY`는 시작 시 자동으로
+`is_admin=true`, `datasets=["*"]`, 무기한으로 시드/보장됩니다. 운영 환경에선
+`.env`에서 이 값을 제거하고 첫 admin 키를 SQL로 직접 심는 방식이 안전합니다.
+
+---
+
 ## 멱등성
 
 같은 요청을 두 번 보내도 잡이 두 개 생기지 않게 하려면 `Idempotency-Key` 헤더를 함께 보내세요.

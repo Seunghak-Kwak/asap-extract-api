@@ -74,6 +74,11 @@ async def create_extract(
 ) -> ExtractResponse:
     # validate dataset + filters up front so we fail loudly before we enqueue
     ds = registry.get(body.dataset)
+    if not key.allows_dataset(body.dataset):
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            f"this api key is not scoped to dataset '{body.dataset}'",
+        )
     try:
         registry.validate_filters(ds, body.filters)
     except registry.ExtractValidationError as exc:

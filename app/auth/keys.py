@@ -1,5 +1,6 @@
 import secrets
 from dataclasses import dataclass
+from datetime import datetime, timezone
 
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
@@ -20,10 +21,15 @@ class IssuedKey:
     secret_hash: str
 
 
-def issue(label: str | None = None) -> IssuedKey:
-    key_id = secrets.token_hex(4)  # 8 chars, indexed lookup
+def _make_pair() -> tuple[str, str, str]:
+    key_id = secrets.token_hex(4)
     secret = secrets.token_urlsafe(32)
     full_key = f"{PREFIX}{key_id}_{secret}"
+    return key_id, secret, full_key
+
+
+def issue() -> IssuedKey:
+    key_id, secret, full_key = _make_pair()
     return IssuedKey(
         full_key=full_key,
         key_id=key_id,
@@ -46,13 +52,19 @@ async def verify(full_key: str) -> ApiKey | None:
     if parts is None:
         return None
     key_id, secret = parts
+    now = datetime.now(timezone.utc)
     async with session() as s:
         row = (
             await s.execute(
-                select(ApiKey).where(ApiKey.key_id == key_id, ApiKey.disabled_at.is_(None))
+                select(ApiKey).where(
+                    ApiKey.key_id == key_id,
+                    ApiKey.disabled_at.is_(None),
+                )
             )
         ).scalar_one_or_none()
     if row is None:
+        return None
+    if row.expires_at is not None and row.expires_at <= now:
         return None
     try:
         _hasher.verify(row.secret_hash, secret)

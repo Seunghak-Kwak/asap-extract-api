@@ -3,6 +3,7 @@ from enum import StrEnum
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     DateTime,
     ForeignKey,
     Index,
@@ -35,10 +36,16 @@ class ApiKey(Base):
     key_id: Mapped[str] = mapped_column(String(32), unique=True, index=True)
     secret_hash: Mapped[str] = mapped_column(Text)
     label: Mapped[str] = mapped_column(String(128))
+    datasets: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     disabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    def allows_dataset(self, name: str) -> bool:
+        return "*" in self.datasets or name in self.datasets
 
 
 class Job(Base):
