@@ -55,6 +55,9 @@ services:
         condition: service_healthy
     volumes:
       - extract-data:/var/lib/extracts
+      # dev convenience: edit admin.html on the host and refresh the browser
+      # — no rebuild needed. Safe in prod too (file resolves the same way).
+      - ./../app/static:/app/app/static:ro
     command: >
       sh -c "
         alembic upgrade head &&

@@ -49,11 +49,21 @@
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     font-size: 12px;
     line-height: 20px;
-    max-width: 360px;
+    max-width: 320px;
+    color: #aab2bd;
+    cursor: pointer;
+  }
+  td.filters .preview {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  td.filters.expanded .preview {
     white-space: pre-wrap;
     word-break: break-all;
-    color: #aab2bd;
   }
+  td.filters .hint { color: var(--muted); font-size: 11px; }
   th { color: var(--muted); font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: .03em; }
   td.mono, code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
   .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; border: 1px solid var(--border); }
@@ -306,7 +316,7 @@ async function loadExtracts() {
       <td class="nowrap muted">${fmtDate(j.created_at)}</td>
       <td><span class="mono">${j.key_id}</span> <span class="muted">${j.key_label}</span></td>
       <td>${j.dataset}</td>
-      <td class="filters">${esc(JSON.stringify(j.filters))}</td>
+      <td class="filters" title="click to toggle"><span class="preview">${esc(JSON.stringify(j.filters))}</span></td>
       <td><span class="pill ${j.status}">${j.status}</span></td>
       <td class="right mono">${j.row_count.toLocaleString()}</td>
       <td class="right mono muted">${fmtBytes(j.bytes)}</td>
@@ -314,6 +324,18 @@ async function loadExtracts() {
       <td class="mono muted" style="font-size:11px;">${j.job_id}</td>
     </tr>
   `).join("") || `<tr><td colspan="9" class="muted">no extracts</td></tr>`;
+
+  // attach the parsed filters object to each cell, then wire click-to-expand
+  document.querySelectorAll("#ex-body td.filters").forEach((td, i) => {
+    td._filters = jobs[i].filters;
+    td.onclick = () => {
+      td.classList.toggle("expanded");
+      const span = td.querySelector(".preview");
+      span.textContent = td.classList.contains("expanded")
+        ? JSON.stringify(td._filters, null, 2)
+        : JSON.stringify(td._filters);
+    };
+  });
 }
 
 $("newkey-form").onsubmit = async (e) => {
