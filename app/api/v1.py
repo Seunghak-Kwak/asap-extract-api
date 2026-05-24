@@ -175,7 +175,7 @@ async def download_extract(job_id: str, key: ApiKey = ApiKeyDep) -> Response:
 
     filename = _download_filename(job, key.label)
     headers = {
-        "X-Accel-Redirect": paths.internal_url(job.id, job.format),
+        "X-Accel-Redirect": paths.internal_url(job.id, job.created_at, job.format),
         "Content-Disposition": f'attachment; filename="{filename}"',
         "Content-Type": "text/csv; charset=utf-8",
     }

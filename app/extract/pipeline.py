@@ -93,8 +93,8 @@ async def run(job_id: str) -> None:
     filters = registry.validate_filters(ds, job.filters)
 
     cfg = settings()
-    paths.ensure_job_dir(job_id)
-    part = paths.partial_path(job_id)
+    paths.ensure_job_dir(job_id, job.created_at)
+    part = paths.partial_path(job_id, job.created_at)
 
     if not await _claim(job_id):
         log_.info("extract_skip_not_queued", status=job.status)
@@ -123,7 +123,7 @@ async def run(job_id: str) -> None:
                             )
                 byte_count = hashing.bytes_written
 
-        paths.atomic_promote(job_id)
+        paths.atomic_promote(job_id, job.created_at)
         await _update_job(
             job_id,
             status=JobStatus.succeeded,
@@ -143,7 +143,7 @@ async def run(job_id: str) -> None:
             elapsed_s=(_utcnow() - started).total_seconds(),
         )
     except ExtractCancelled:
-        paths.cleanup_job(job_id)
+        paths.cleanup_job(job_id, job.created_at)
         await _update_job(job_id, status=JobStatus.cancelled, finished_at=_utcnow())
         extracts_finished.labels(dataset=ds.name, status="cancelled").inc()
         log_.info("extract_cancelled", dataset=ds.name, rows=row_count)

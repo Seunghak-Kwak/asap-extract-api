@@ -171,10 +171,16 @@ dev 환경에서는 **모든 상태가 `./data/` 한 곳에 모여 있습니다.
       pgdata/                  ← 실제 PGDATA (서브디렉터리 패턴)
     mysql/                     ← MySQL dev 시드 (warehouse 스키마 + events 시드 데이터)
     extracts/                  ← 추출 결과 파일
-      <job_id>/
-        result.csv             (성공 시)
-        result.csv.part        (진행 중)
+      <YYYY-MM-DD>/            ← 잡의 created_at(UTC) 날짜
+        <job_id>/
+          result.csv           (성공 시)
+          result.csv.part      (진행 중)
 ```
+
+날짜 디렉터리는 운영 편의용 분할:
+- 특정 날짜 백업/검수: `tar -czf 0501.tgz data/extracts/2026-05-01`
+- 특정 날짜 통째로 정리: `rm -rf data/extracts/2026-05-01`
+- 한 폴더에 수십만 개가 누적되는 상황 회피
 
 볼륨 구성:
 
@@ -186,6 +192,35 @@ dev 환경에서는 **모든 상태가 `./data/` 한 곳에 모여 있습니다.
 | `app/static/`    | bind mount (ro) | repo의 `app/static/` | admin.html 핫리로드.                                     |
 
 운영(prod) 환경에서는 DB는 별도 매니지드 인스턴스(RDS/CloudSQL 등)나 K8s PV로 두는 것이 정석. 이 compose 파일은 어디까지나 dev/단일 호스트용입니다.
+
+### 보존 / 자동 청소 (sweeper)
+
+추출 결과는 무한히 쌓이지 않습니다. 워커가 **Arq cron으로 30분마다** `sweep_expired` 잡을 자체 실행 — `EXTRACT_RETENTION_HOURS`(기본 72h)를 초과한 succeeded 잡의 파일과 빈 날짜 폴더를 디스크에서 제거하고, DB 상태를 `succeeded` → `expired`로 전환합니다.
+
+특징:
+- **DB 행은 남깁니다** (감사 추적용). `expired` 상태로 보존되며 다운로드만 거부.
+- **빈 날짜 폴더 자동 정리**: 그날 마지막 잡이 만료되면 `YYYY-MM-DD/` 폴더도 함께 제거.
+- **failed 잡은 sweeper가 건드리지 않음**: `.part` 파일이 forensics용으로 남음. 디스크 부담이 되면 운영자가 수동 정리.
+
+수동 트리거 (테스트 / 응급 정리):
+```bash
+docker compose -f deploy/docker-compose.yml exec app python -c "
+import asyncio
+from arq.connections import RedisSettings, create_pool
+from app.config import settings
+async def main():
+    pool = await create_pool(RedisSettings.from_dsn(settings().redis_dsn))
+    await pool.enqueue_job('sweep_expired')
+asyncio.run(main())
+"
+```
+
+워커 로그에서 결과 확인:
+```
+{"count": 12, "event": "sweep_expired", ...}
+```
+
+cron 주기를 바꾸고 싶으면 `app/workers/arq_worker.py`의 `cron_jobs` 라인을 수정 — 예: `cron(sweep_expired, hour=2, minute=0)` 으로 하루 1회 새벽 2시.
 
 ### 전체 리셋
 
