@@ -59,8 +59,17 @@ async def _load_job(job_id: str) -> Job:
         return job
 
 
-async def _claim(job_id: str) -> None:
-    await _update_job(job_id, status=JobStatus.running, started_at=_utcnow())
+async def _claim(job_id: str) -> bool:
+    """Atomic claim: returns True only on the transition queued→running.
+    False means the job is already running/done/failed (retry no-op)."""
+    async with session() as s:
+        result = await s.execute(
+            update(Job)
+            .where(Job.id == job_id, Job.status == JobStatus.queued)
+            .values(status=JobStatus.running, started_at=_utcnow())
+        )
+        await s.commit()
+        return result.rowcount > 0
 
 
 async def _check_cancel(job_id: str) -> bool:
@@ -87,7 +96,9 @@ async def run(job_id: str) -> None:
     paths.ensure_job_dir(job_id)
     part = paths.partial_path(job_id)
 
-    await _claim(job_id)
+    if not await _claim(job_id):
+        log_.info("extract_skip_not_queued", status=job.status)
+        return
     extracts_started.labels(dataset=ds.name).inc()
     started = _utcnow()
     row_count = 0

@@ -19,7 +19,6 @@
 | ------------------------------- | ------------------------------------------------ |
 | API를 사용하는 사람                    | [docs/user-guide.md](docs/user-guide.md)         |
 | 시스템을 띄우고 관리하는 사람 (+ 아키텍처)        | [docs/admin-guide.md](docs/admin-guide.md)       |
-| 코드를 만지는 사람 (설계 결정 + 비-협상 규칙)     | [CLAUDE.md](CLAUDE.md)                           |
 
 ## 진입점
 

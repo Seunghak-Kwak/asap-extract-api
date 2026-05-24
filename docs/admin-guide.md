@@ -450,5 +450,3 @@ GET  /v1/extracts/{id}/download
 | `app/static/admin.html`             | 단일 파일 admin 패널 (vanilla JS)                              |
 | `alembic/versions/`                 | DB 마이그레이션                                                |
 | `deploy/`                           | Dockerfile, docker-compose.yml, nginx.conf, mysql seed   |
-
-> 보다 깊은 설계 결정과 비-협상 규칙은 [../CLAUDE.md](../CLAUDE.md)에 정리되어 있습니다.
