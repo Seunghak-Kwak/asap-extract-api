@@ -17,7 +17,7 @@ WORKDIR /app
 COPY pyproject.toml ./
 RUN uv pip install --system --no-cache .
 
-# Source
+# Source (app/ includes app/static/admin.html)
 COPY app/ app/
 COPY alembic/ alembic/
 COPY alembic.ini ./

@@ -1,13 +1,13 @@
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel, Field
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 
 from app.api.deps import AdminDep
 from app.auth.keys import _hasher, _make_pair
 from app.db.meta.engine import session
-from app.db.meta.models import ApiKey
+from app.db.meta.models import ApiKey, Job, JobStatus
 from app.extract.registry import REGISTRY
 
 router = APIRouter(prefix="/v1/admin", tags=["admin"])
@@ -124,3 +124,108 @@ async def revoke_key(key_id: str, admin: ApiKey = AdminDep) -> None:
         if result.rowcount == 0:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "key not found or already disabled")
         await s.commit()
+
+
+# ---- monitoring -------------------------------------------------------------
+
+
+class StatsResponse(BaseModel):
+    jobs_by_status: dict[str, int]
+    rows_extracted_total: int
+    active_keys: int
+    jobs_last_24h: int
+
+
+@router.get("/stats", response_model=StatsResponse)
+async def stats(_admin: ApiKey = AdminDep) -> StatsResponse:
+    now = datetime.now(timezone.utc)
+    async with session() as s:
+        by_status_rows = (
+            await s.execute(
+                select(Job.status, func.count()).group_by(Job.status)
+            )
+        ).all()
+        total_rows = (
+            await s.execute(select(func.coalesce(func.sum(Job.row_count), 0)))
+        ).scalar_one()
+        active_keys = (
+            await s.execute(
+                select(func.count())
+                .select_from(ApiKey)
+                .where(
+                    ApiKey.disabled_at.is_(None),
+                    (ApiKey.expires_at.is_(None)) | (ApiKey.expires_at > now),
+                )
+            )
+        ).scalar_one()
+        recent = (
+            await s.execute(
+                select(func.count())
+                .select_from(Job)
+                .where(Job.created_at >= now - timedelta(hours=24))
+            )
+        ).scalar_one()
+    return StatsResponse(
+        jobs_by_status={str(s_): int(n) for s_, n in by_status_rows},
+        rows_extracted_total=int(total_rows),
+        active_keys=int(active_keys),
+        jobs_last_24h=int(recent),
+    )
+
+
+class JobInfo(BaseModel):
+    job_id: str
+    key_id: str
+    key_label: str
+    dataset: str
+    status: JobStatus
+    row_count: int
+    bytes: int
+    created_at: datetime
+    started_at: datetime | None
+    finished_at: datetime | None
+    error_class: str | None
+
+
+@router.get("/extracts", response_model=list[JobInfo])
+async def list_extracts(
+    api_key_id: str | None = Query(default=None, description="filter by public key_id"),
+    job_status: JobStatus | None = Query(default=None, alias="status"),
+    dataset: str | None = None,
+    limit: int = Query(default=50, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    _admin: ApiKey = AdminDep,
+) -> list[JobInfo]:
+    q = (
+        select(Job, ApiKey.key_id, ApiKey.label)
+        .join(ApiKey, ApiKey.id == Job.api_key_id)
+        .order_by(Job.created_at.desc())
+        .limit(limit)
+        .offset(offset)
+    )
+    if api_key_id is not None:
+        q = q.where(ApiKey.key_id == api_key_id)
+    if job_status is not None:
+        q = q.where(Job.status == job_status)
+    if dataset is not None:
+        q = q.where(Job.dataset == dataset)
+
+    async with session() as s:
+        rows = (await s.execute(q)).all()
+
+    return [
+        JobInfo(
+            job_id=j.id,
+            key_id=kid,
+            key_label=klabel,
+            dataset=j.dataset,
+            status=JobStatus(j.status),
+            row_count=j.row_count,
+            bytes=j.bytes,
+            created_at=j.created_at,
+            started_at=j.started_at,
+            finished_at=j.finished_at,
+            error_class=j.error_class,
+        )
+        for j, kid, klabel in rows
+    ]

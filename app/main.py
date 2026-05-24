@@ -1,6 +1,8 @@
+from pathlib import Path
+
 from fastapi import FastAPI
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
-from starlette.responses import PlainTextResponse, Response
+from starlette.responses import FileResponse, PlainTextResponse, Response
 
 from app.api.admin import router as admin_router
 from app.api.v1 import router as v1_router
@@ -22,6 +24,12 @@ def build_app() -> FastAPI:
     @app.get("/metrics")
     async def metrics() -> Response:
         return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
+    admin_html = Path(__file__).parent / "static" / "admin.html"
+
+    @app.get("/admin", include_in_schema=False)
+    async def admin_panel() -> FileResponse:
+        return FileResponse(admin_html, media_type="text/html")
 
     return app
 

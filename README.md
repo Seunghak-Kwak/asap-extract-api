@@ -208,10 +208,20 @@ REGISTRY = {
 
 ---
 
+## 관리자 패널
+
+http://localhost:8080/admin 에 접속해서 admin 키로 로그인하면:
+
+- **Overview**: 상태별 잡 카운트, 활성 키 수, 최근 24시간 잡, 누적 추출 행 수
+- **Issue API key**: 라벨/datasets/만료일/admin 여부를 입력해 즉시 발급. `full_key`는 발급 직후 한 번만 노출.
+- **Recent extracts**: API 키별 / 상태별 / 데이터셋별 필터로 추출 이력 조회.
+
+키는 페이지 sessionStorage에만 보관되며, 탭을 닫으면 사라집니다.
+
 ## API 키 관리 (관리자 전용)
 
 키는 사용자가 직접 발급 신청하는 게 아니라 **관리자가 발급해서 전달**합니다.
-관리자 키(부트스트랩 키 또는 `is_admin=true`인 키)로 다음 엔드포인트를 호출하세요.
+패널 외에 CLI/스크립트에서 쓰려면 아래 엔드포인트를 직접 호출하세요.
 
 ### 새 키 발급
 
@@ -263,6 +273,14 @@ curl -X DELETE $API/v1/admin/api-keys/<key_id> -H "Authorization: Bearer $ADMIN_
 ```
 
 자기 자신을 폐기하려고 하면 `400` — 잠금 사고를 막기 위한 안전장치.
+
+### 모니터링 API
+
+| 메서드 + 경로                          | 용도                                                 |
+| --------------------------------- | -------------------------------------------------- |
+| `GET /v1/admin/stats`             | 상태별 잡 카운트, 활성 키 수, 24시간 잡, 누적 행                    |
+| `GET /v1/admin/extracts`          | 추출 이력 목록. 쿼리: `api_key_id`, `status`, `dataset`, `limit`, `offset` |
+| `GET /metrics`                    | Prometheus 형식 메트릭 (인증 없음 — 사설망에서만 노출 권장)            |
 
 ### 부트스트랩 키
 

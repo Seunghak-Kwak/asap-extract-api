@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>ASAP Extract — Admin</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<style>
+  :root {
+    --bg: #0e1116;
+    --panel: #161b22;
+    --border: #2a313c;
+    --text: #d7dde6;
+    --muted: #8892a0;
+    --accent: #4f9eff;
+    --ok: #3fb950;
+    --warn: #d29922;
+    --err: #f85149;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+  }
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 24px; border-bottom: 1px solid var(--border);
+    background: var(--panel);
+  }
+  header h1 { margin: 0; font-size: 16px; font-weight: 600; }
+  header .who { color: var(--muted); font-size: 12px; }
+  header button { background: transparent; color: var(--muted); border: 1px solid var(--border); padding: 6px 10px; border-radius: 6px; cursor: pointer; }
+  main { padding: 24px; max-width: 1200px; margin: 0 auto; }
+  section { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 18px; margin-bottom: 18px; }
+  section h2 { margin: 0 0 14px; font-size: 14px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
+  .tile { background: #11161d; border: 1px solid var(--border); border-radius: 6px; padding: 12px 14px; }
+  .tile .label { color: var(--muted); font-size: 12px; }
+  .tile .value { font-size: 22px; font-weight: 600; margin-top: 4px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: .03em; }
+  td.mono, code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; border: 1px solid var(--border); }
+  .pill.queued, .pill.running { color: var(--accent); border-color: var(--accent); }
+  .pill.succeeded { color: var(--ok); border-color: var(--ok); }
+  .pill.failed, .pill.expired { color: var(--err); border-color: var(--err); }
+  .pill.cancelled { color: var(--warn); border-color: var(--warn); }
+  form.inline { display: grid; grid-template-columns: 1.4fr 1.4fr 0.8fr 0.8fr auto; gap: 8px; align-items: end; margin-bottom: 14px; }
+  form.inline label { display: block; font-size: 11px; color: var(--muted); margin-bottom: 4px; text-transform: uppercase; letter-spacing: .03em; }
+  input, select, button {
+    background: #11161d; color: var(--text); border: 1px solid var(--border);
+    padding: 7px 10px; border-radius: 6px; font-size: 13px; width: 100%;
+  }
+  button { background: var(--accent); color: #061325; border: none; font-weight: 600; cursor: pointer; }
+  button.secondary { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+  .filters { display: flex; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+  .filters > div { display: flex; flex-direction: column; }
+  .filters input, .filters select { min-width: 180px; }
+  .toast {
+    position: fixed; bottom: 24px; right: 24px;
+    background: #11161d; border: 1px solid var(--border); padding: 12px 16px;
+    border-radius: 6px; max-width: 480px; word-break: break-all;
+  }
+  .toast.ok { border-color: var(--ok); }
+  .toast.err { border-color: var(--err); }
+  .login-wrap { max-width: 420px; margin: 80px auto; padding: 32px; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; }
+  .login-wrap h1 { margin-top: 0; font-size: 18px; }
+  .login-wrap p { color: var(--muted); }
+  .muted { color: var(--muted); }
+  .right { text-align: right; }
+  .nowrap { white-space: nowrap; }
+</style>
+</head>
+<body>
+
+<div id="login" class="login-wrap" hidden>
+  <h1>ASAP Extract — Admin</h1>
+  <p>Paste an admin API key to continue.</p>
+  <input id="login-key" placeholder="ek_live_..." autocomplete="off" />
+  <p class="muted" style="margin: 10px 0 0; font-size: 12px;">
+    The key is kept in <code>sessionStorage</code> only.
+  </p>
+  <button id="login-btn" style="margin-top: 12px;">Sign in</button>
+  <div id="login-err" style="color: var(--err); margin-top: 10px;" hidden></div>
+</div>
+
+<div id="app" hidden>
+  <header>
+    <h1>ASAP Extract — Admin</h1>
+    <div>
+      <span class="who" id="who"></span>
+      <button id="logout">Sign out</button>
+    </div>
+  </header>
+  <main>
+
+    <section>
+      <h2>Overview</h2>
+      <div class="tiles" id="tiles"></div>
+    </section>
+
+    <section>
+      <h2>Issue API key</h2>
+      <form class="inline" id="newkey-form">
+        <div><label>Label</label><input id="nk-label" required placeholder="data-team-jan" /></div>
+        <div><label>Datasets (comma-separated, or *)</label><input id="nk-datasets" required placeholder="events" /></div>
+        <div><label>Expires (days)</label><input id="nk-expires" type="number" min="1" max="3650" placeholder="optional" /></div>
+        <div><label>Admin?</label>
+          <select id="nk-admin"><option value="false">no</option><option value="true">yes</option></select>
+        </div>
+        <button type="submit">Issue</button>
+      </form>
+      <div id="issued" hidden style="background:#11161d;border:1px solid var(--ok);border-radius:6px;padding:12px;margin-bottom:14px;">
+        <div class="muted" style="font-size:12px;">Full key (shown once — save it now)</div>
+        <code id="issued-key" style="font-size:13px;"></code>
+      </div>
+      <table>
+        <thead>
+          <tr><th>key_id</th><th>label</th><th>datasets</th><th>admin</th><th>expires</th><th>state</th><th></th></tr>
+        </thead>
+        <tbody id="keys-body"></tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>Recent extracts</h2>
+      <div class="filters">
+        <div><label class="muted" style="font-size:11px;">API key</label><select id="f-key"><option value="">all keys</option></select></div>
+        <div><label class="muted" style="font-size:11px;">Status</label>
+          <select id="f-status">
+            <option value="">all</option>
+            <option>queued</option><option>running</option><option>succeeded</option>
+            <option>failed</option><option>cancelled</option><option>expired</option>
+          </select>
+        </div>
+        <div><label class="muted" style="font-size:11px;">Dataset</label><input id="f-dataset" placeholder="events" /></div>
+        <div style="align-self:flex-end"><button class="secondary" id="refresh">Refresh</button></div>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>created</th><th>key</th><th>dataset</th><th>status</th>
+            <th class="right">rows</th><th class="right">bytes</th>
+            <th>error</th><th>job_id</th>
+          </tr>
+        </thead>
+        <tbody id="ex-body"></tbody>
+      </table>
+    </section>
+
+  </main>
+</div>
+
+<div id="toast" class="toast" hidden></div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const KEY = "asap_admin_key";
+const fmtDate = (s) => s ? new Date(s).toLocaleString() : "";
+const fmtBytes = (n) => {
+  if (!n) return "0";
+  const u = ["B","KB","MB","GB"]; let i = 0;
+  while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
+  return n.toFixed(n < 10 ? 1 : 0) + " " + u[i];
+};
+
+function toast(msg, kind="ok") {
+  const t = $("toast");
+  t.textContent = msg;
+  t.className = "toast " + kind;
+  t.hidden = false;
+  setTimeout(() => t.hidden = true, 4000);
+}
+
+async function api(path, opts = {}) {
+  const key = sessionStorage.getItem(KEY);
+  const res = await fetch(path, {
+    ...opts,
+    headers: {
+      "Authorization": "Bearer " + key,
+      "Content-Type": "application/json",
+      ...(opts.headers || {}),
+    },
+  });
+  if (res.status === 401) { logout(); throw new Error("unauthorized"); }
+  if (res.status === 403) throw new Error("forbidden (not admin?)");
+  if (!res.ok) {
+    let detail = "";
+    try { detail = (await res.json()).detail || ""; } catch (_) {}
+    throw new Error(`${res.status} ${detail}`);
+  }
+  if (res.status === 204) return null;
+  return res.json();
+}
+
+function logout() {
+  sessionStorage.removeItem(KEY);
+  $("app").hidden = true;
+  $("login").hidden = false;
+  $("login-key").value = "";
+}
+
+$("logout").onclick = logout;
+
+$("login-btn").onclick = async () => {
+  const key = $("login-key").value.trim();
+  if (!key) return;
+  sessionStorage.setItem(KEY, key);
+  try {
+    await api("/v1/admin/api-keys");
+    $("login").hidden = true;
+    $("app").hidden = false;
+    $("login-err").hidden = true;
+    boot();
+  } catch (e) {
+    sessionStorage.removeItem(KEY);
+    $("login-err").textContent = e.message;
+    $("login-err").hidden = false;
+  }
+};
+
+async function loadStats() {
+  const s = await api("/v1/admin/stats");
+  const tiles = [
+    ["Last 24h", s.jobs_last_24h],
+    ["Active keys", s.active_keys],
+    ["Total rows", s.rows_extracted_total.toLocaleString()],
+    ...Object.entries(s.jobs_by_status).map(([k, v]) => [k, v]),
+  ];
+  $("tiles").innerHTML = tiles.map(([l, v]) =>
+    `<div class="tile"><div class="label">${l}</div><div class="value">${v}</div></div>`
+  ).join("");
+}
+
+async function loadKeys() {
+  const keys = await api("/v1/admin/api-keys");
+  $("keys-body").innerHTML = keys.map(k => {
+    const state = k.disabled_at
+      ? `<span class="pill cancelled">disabled</span>`
+      : (k.expires_at && new Date(k.expires_at) < new Date())
+        ? `<span class="pill expired">expired</span>`
+        : `<span class="pill succeeded">active</span>`;
+    const revokeBtn = k.disabled_at
+      ? ""
+      : `<button class="secondary" data-revoke="${k.key_id}" style="padding:4px 8px;font-size:12px;">revoke</button>`;
+    return `
+      <tr>
+        <td class="mono">${k.key_id}</td>
+        <td>${k.label}</td>
+        <td class="mono">${JSON.stringify(k.datasets)}</td>
+        <td>${k.is_admin ? "✓" : ""}</td>
+        <td class="nowrap muted">${fmtDate(k.expires_at) || "never"}</td>
+        <td>${state}</td>
+        <td class="right">${revokeBtn}</td>
+      </tr>`;
+  }).join("") || `<tr><td colspan="7" class="muted">no keys</td></tr>`;
+
+  // populate filter dropdown
+  const sel = $("f-key");
+  const current = sel.value;
+  sel.innerHTML = `<option value="">all keys</option>` +
+    keys.map(k => `<option value="${k.key_id}">${k.key_id} — ${k.label}</option>`).join("");
+  sel.value = current;
+
+  // wire revoke
+  document.querySelectorAll("[data-revoke]").forEach(b => {
+    b.onclick = async () => {
+      if (!confirm(`Revoke key ${b.dataset.revoke}?`)) return;
+      try {
+        await api(`/v1/admin/api-keys/${b.dataset.revoke}`, { method: "DELETE" });
+        toast("revoked");
+        await loadKeys();
+      } catch (e) { toast(e.message, "err"); }
+    };
+  });
+}
+
+async function loadExtracts() {
+  const params = new URLSearchParams();
+  const k = $("f-key").value, s = $("f-status").value, d = $("f-dataset").value.trim();
+  if (k) params.set("api_key_id", k);
+  if (s) params.set("status", s);
+  if (d) params.set("dataset", d);
+  params.set("limit", "100");
+  const jobs = await api("/v1/admin/extracts?" + params);
+  $("ex-body").innerHTML = jobs.map(j => `
+    <tr>
+      <td class="nowrap muted">${fmtDate(j.created_at)}</td>
+      <td><span class="mono">${j.key_id}</span> <span class="muted">${j.key_label}</span></td>
+      <td>${j.dataset}</td>
+      <td><span class="pill ${j.status}">${j.status}</span></td>
+      <td class="right mono">${j.row_count.toLocaleString()}</td>
+      <td class="right mono muted">${fmtBytes(j.bytes)}</td>
+      <td class="muted">${j.error_class || ""}</td>
+      <td class="mono muted" style="font-size:11px;">${j.job_id}</td>
+    </tr>
+  `).join("") || `<tr><td colspan="8" class="muted">no extracts</td></tr>`;
+}
+
+$("newkey-form").onsubmit = async (e) => {
+  e.preventDefault();
+  const body = {
+    label: $("nk-label").value.trim(),
+    datasets: $("nk-datasets").value.split(",").map(s => s.trim()).filter(Boolean),
+    is_admin: $("nk-admin").value === "true",
+  };
+  const exp = $("nk-expires").value.trim();
+  if (exp) body.expires_in_days = parseInt(exp, 10);
+  try {
+    const res = await api("/v1/admin/api-keys", { method: "POST", body: JSON.stringify(body) });
+    $("issued").hidden = false;
+    $("issued-key").textContent = res.full_key;
+    e.target.reset();
+    await loadKeys();
+    toast("key issued — copy it now");
+  } catch (err) { toast(err.message, "err"); }
+};
+
+["f-key", "f-status", "f-dataset"].forEach(id => $(id).onchange = loadExtracts);
+$("f-dataset").oninput = (() => {
+  let t; return () => { clearTimeout(t); t = setTimeout(loadExtracts, 250); };
+})();
+$("refresh").onclick = boot;
+
+async function boot() {
+  try {
+    await Promise.all([loadStats(), loadKeys(), loadExtracts()]);
+    $("who").textContent = "signed in";
+  } catch (e) { toast(e.message, "err"); }
+}
+
+// entry
+if (sessionStorage.getItem(KEY)) {
+  $("app").hidden = false;
+  boot();
+} else {
+  $("login").hidden = false;
+}
+</script>
+</body>
+</html>
