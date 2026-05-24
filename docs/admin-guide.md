@@ -155,28 +155,54 @@ docker compose -f deploy/docker-compose.yml logs -f app worker
 
 ## 6.5. 디스크 레이아웃과 볼륨
 
+dev 환경에서는 **모든 상태가 `./data/` 한 곳에 모여 있습니다.** finder/탐색기로 바로 보이고, 디렉터리 단위로 백업·삭제 가능.
+
 ```
 <repo-root>/
   data/
-    extracts/                    ← 호스트 bind mount, finder/탐색기에서 직접 접근
+    postgres/                  ← Postgres 메타 DB (jobs, api_keys)
+      pgdata/                  ← 실제 PGDATA (서브디렉터리 패턴)
+    mysql/                     ← MySQL dev 시드 (warehouse 스키마 + events 시드 데이터)
+    extracts/                  ← 추출 결과 파일
       <job_id>/
-        result.csv               (성공 시)
-        result.csv.part          (진행 중)
+        result.csv             (성공 시)
+        result.csv.part        (진행 중)
 ```
 
 볼륨 구성:
 
-| 볼륨 이름            | 종류         | 호스트 위치                       | 이유                              |
-| --------------- | ---------- | ---------------------------- | ------------------------------- |
-| 결과 파일            | bind mount | `./data/extracts/`           | 사용자가 직접 봐야 하는 파일. 백업/검수 편의.     |
-| Postgres 데이터     | named volume | Docker가 관리 (호스트 직접 접근 X)    | 내부 바이너리. 호스트에 두면 UID 충돌·실수 위험. |
-| MySQL (dev seed) 데이터 | named volume | Docker가 관리                | 동일                              |
-| `app/static/`   | bind mount (ro) | repo의 `app/static/`         | admin.html 핫리로드.                |
+| 마운트              | 종류              | 호스트 위치             | 이유                                                   |
+| ---------------- | --------------- | ----------------- | ---------------------------------------------------- |
+| 결과 파일             | bind mount      | `./data/extracts/` | 사용자가 직접 봐야 하는 파일. 백업/검수 편의.                          |
+| Postgres 메타 DB    | bind mount      | `./data/postgres/` | **dev에서 쉽게 리셋**. PGDATA는 서브디렉터리 패턴으로 권한 이슈 회피.        |
+| MySQL dev seed   | bind mount      | `./data/mysql/`    | 동일. 시드 데이터를 자주 다시 만들기 좋음.                            |
+| `app/static/`    | bind mount (ro) | repo의 `app/static/` | admin.html 핫리로드.                                     |
 
-named volume 위치 확인이 꼭 필요하면:
+운영(prod) 환경에서는 DB는 별도 매니지드 인스턴스(RDS/CloudSQL 등)나 K8s PV로 두는 것이 정석. 이 compose 파일은 어디까지나 dev/단일 호스트용입니다.
+
+### 전체 리셋
+
+테스트 도중 깔끔히 처음부터 다시:
+
 ```bash
-docker volume inspect extract-api_pg-data
-docker volume inspect extract-api_mysql-data
+docker compose -f deploy/docker-compose.yml down
+rm -rf data/
+docker compose -f deploy/docker-compose.yml up -d --build
+```
+
+`up`이 다시 도는 동안:
+- Postgres가 빈 디렉터리 보고 새로 initdb
+- MySQL이 빈 디렉터리 보고 새로 init + `mysql-seed/` 스크립트 자동 실행
+- 앱 시작 시 Alembic 마이그레이션 + 부트스트랩 키 시드
+
+특정 부분만 리셋하고 싶다면:
+
+```bash
+docker compose -f deploy/docker-compose.yml down
+rm -rf data/extracts                # 결과 파일만
+rm -rf data/postgres                # 메타 DB만 (모든 잡 이력 + 키 사라짐)
+rm -rf data/mysql                   # 소스 시드만 (재시드됨)
+docker compose -f deploy/docker-compose.yml up -d
 ```
 
 ### 다운로드 파일명 규칙
@@ -293,7 +319,7 @@ SOURCE_DB=...
 | `failed` + `error_class=ExtractTooLarge`  | 사용자 필터가 너무 넓음. 안내하거나 `EXTRACT_MAX_ROWS` 상향.                                   |
 | 인증/만료된 키 호출이 자꾸 옴                         | 패널 → Recent extracts 필터로 해당 키의 패턴 확인 후 사용자에게 갱신 안내.                            |
 | 디스크 부족                                    | `./data/extracts` 점검. 보존 기간(`EXTRACT_RETENTION_HOURS`) 단축 또는 청소 sweeper 도입.    |
-| 다운로드가 404, 잡은 `succeeded`로 보임             | 옛 named volume(`extract-api_extract-data`)에 파일이 남아있는데 코드가 bind mount를 봄. 옛 볼륨에서 `./data/extracts/`로 디렉터리 복사하거나, 잡을 새로 만들어 받으세요. |
+| 다운로드가 404, 잡은 `succeeded`로 보임             | 옛 named volume에 파일이 남아있을 가능성. `docker volume ls`로 `extract-api_*` 잔여물 확인 후 `docker volume rm`, 또는 잡을 새로 만들어 받으세요. |
 
 ---
 

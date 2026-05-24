@@ -7,8 +7,11 @@ services:
       POSTGRES_USER: extract
       POSTGRES_PASSWORD: extract
       POSTGRES_DB: extract_meta
+      # PGDATA in a subdirectory so the bind mount point itself can be
+      # owned by anyone — postgres just creates ./pgdata inside it.
+      PGDATA: /var/lib/postgresql/data/pgdata
     volumes:
-      - pg-data:/var/lib/postgresql/data
+      - ../data/postgres:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U extract -d extract_meta"]
       interval: 2s
@@ -33,7 +36,7 @@ services:
       MYSQL_USER: extract_ro
       MYSQL_PASSWORD: extract_ro
     volumes:
-      - mysql-data:/var/lib/mysql
+      - ../data/mysql:/var/lib/mysql
       - ./mysql-seed:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -proot"]
@@ -92,7 +95,3 @@ services:
       - ../data/extracts:/var/lib/extracts:ro
     ports:
       - "8080:80"
-
-volumes:
-  pg-data:
-  mysql-data:
