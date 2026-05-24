@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select, update
 
 from app.api.deps import AdminDep
-from app.auth.keys import _hasher, _make_pair
+from app.auth.keys import hasher, make_pair
 from app.config import settings
 from app.db.meta.engine import session
 from app.db.meta.models import ApiKey, Job, JobStatus
@@ -76,14 +76,14 @@ def _validate_dataset_scope(datasets: list[str]) -> None:
 async def create_key(body: ApiKeyCreate, _admin: ApiKey = AdminDep) -> ApiKeyIssued:
     _validate_dataset_scope(body.datasets)
 
-    key_id, secret, full = _make_pair()
+    key_id, secret, full = make_pair()
     expires_at: datetime | None = None
     if body.expires_in_days is not None:
         expires_at = datetime.now(timezone.utc) + timedelta(days=body.expires_in_days)
 
     row = ApiKey(
         key_id=key_id,
-        secret_hash=_hasher.hash(secret),
+        secret_hash=hasher.hash(secret),
         label=body.label,
         datasets=body.datasets,
         is_admin=body.is_admin,
@@ -168,7 +168,7 @@ async def stats(_admin: ApiKey = AdminDep) -> StatsResponse:
             )
         ).scalar_one()
     return StatsResponse(
-        jobs_by_status={str(s_): int(n) for s_, n in by_status_rows},
+        jobs_by_status={str(st): int(n) for st, n in by_status_rows},
         rows_extracted_total=int(total_rows),
         active_keys=int(active_keys),
         jobs_last_24h=int(recent),

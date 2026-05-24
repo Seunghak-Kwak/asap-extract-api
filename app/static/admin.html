@@ -38,33 +38,35 @@
   .tile { background: #11161d; border: 1px solid var(--border); border-radius: 6px; padding: 12px 14px; }
   .tile .label { color: var(--muted); font-size: 12px; }
   .tile .value { font-size: 22px; font-weight: 600; margin-top: 4px; }
-  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  /* table-layout: fixed locks columns to <col> widths so content never
+     reshapes the grid. Every cell is single-line truncated by default;
+     specific cells opt into wrap by adding the `wrap` class. This is the
+     only way to keep rows visually aligned no matter what data shows up. */
+  table { width: 100%; border-collapse: collapse; font-size: 13px; table-layout: fixed; }
   th, td {
-    text-align: left; padding: 10px;
+    text-align: left;
+    padding: 10px;
     border-bottom: 1px solid var(--border);
     vertical-align: top;
-    line-height: 20px;  /* fixed px so monospace/sans cells share the same baseline */
-  }
-  td.filters {
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    font-size: 12px;
     line-height: 20px;
-    max-width: 320px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  td.wrap { white-space: normal; word-break: break-word; }
+  td.filters {
+    /* Must keep the SAME font-size as other cells (13px). Different font-size
+       inside identical line-height puts the glyphs at a different Y inside
+       the line box — that's why the filters text used to sit lower than the
+       neighbouring cells. Monospace family is kept for JSON readability. */
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 13px;
     color: #aab2bd;
     cursor: pointer;
   }
-  td.filters .preview {
-    display: block;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  td.filters.expanded .preview {
-    white-space: pre-wrap;
-    word-break: break-all;
-  }
-  td.filters .hint { color: var(--muted); font-size: 11px; }
-  td.jobid { font-size: 11px; }
+  td.filters.expanded { white-space: normal; word-break: break-all; overflow: visible; text-overflow: clip; }
+  td.jobid { cursor: copy; }  /* font-size inherits 13px from table — same baseline as siblings */
+  td.right { text-align: right; }
   th { color: var(--muted); font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: .03em; }
   td.mono, code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
   .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; border: 1px solid var(--border); }
@@ -80,9 +82,13 @@
   }
   button { background: var(--accent); color: #061325; border: none; font-weight: 600; cursor: pointer; }
   button.secondary { background: transparent; color: var(--muted); border: 1px solid var(--border); }
-  .filters { display: flex; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
-  .filters > div { display: flex; flex-direction: column; }
-  .filters input, .filters select { min-width: 180px; }
+  /* The filter-control bar above the extracts table. Renamed from .filters
+     to avoid a class collision with td.filters (the per-row JSON cell) —
+     that collision was making cells inherit margin-bottom and display:flex,
+     which broke row alignment. */
+  .filter-bar { display: flex; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+  .filter-bar > div { display: flex; flex-direction: column; }
+  .filter-bar input, .filter-bar select { min-width: 180px; }
   .toast {
     position: fixed; bottom: 24px; right: 24px;
     background: #11161d; border: 1px solid var(--border); padding: 12px 16px;
@@ -142,6 +148,15 @@
         <code id="issued-key" style="font-size:13px;"></code>
       </div>
       <table>
+        <colgroup>
+          <col style="width: 110px">
+          <col style="width: 180px">
+          <col>
+          <col style="width: 70px">
+          <col style="width: 170px">
+          <col style="width: 100px">
+          <col style="width: 90px">
+        </colgroup>
         <thead>
           <tr><th>key_id</th><th>label</th><th>datasets</th><th>admin</th><th>expires</th><th>state</th><th></th></tr>
         </thead>
@@ -151,7 +166,7 @@
 
     <section>
       <h2>Recent extracts</h2>
-      <div class="filters">
+      <div class="filter-bar">
         <div><label class="muted" style="font-size:11px;">API key</label><select id="f-key"><option value="">all keys</option></select></div>
         <div><label class="muted" style="font-size:11px;">Status</label>
           <select id="f-status">
@@ -164,6 +179,17 @@
         <div style="align-self:flex-end"><button class="secondary" id="refresh">Refresh</button></div>
       </div>
       <table>
+        <colgroup>
+          <col style="width: 170px">   <!-- created -->
+          <col style="width: 200px">   <!-- key -->
+          <col style="width: 90px">    <!-- dataset -->
+          <col>                         <!-- filters (flexible) -->
+          <col style="width: 110px">   <!-- status -->
+          <col style="width: 80px">    <!-- rows -->
+          <col style="width: 80px">    <!-- bytes -->
+          <col style="width: 130px">   <!-- error -->
+          <col style="width: 100px">   <!-- job_id -->
+        </colgroup>
         <thead>
           <tr>
             <th>created</th><th>key</th><th>dataset</th><th>filters</th><th>status</th>
@@ -314,33 +340,31 @@ async function loadExtracts() {
   const esc = (s) => s.replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
   $("ex-body").innerHTML = jobs.map(j => `
     <tr>
-      <td class="nowrap muted">${fmtDate(j.created_at)}</td>
-      <td class="nowrap"><span class="mono">${j.key_id}</span> <span class="muted">${esc(j.key_label)}</span></td>
+      <td class="muted">${fmtDate(j.created_at)}</td>
+      <td><span class="mono">${j.key_id}</span> <span class="muted">${esc(j.key_label)}</span></td>
       <td>${j.dataset}</td>
-      <td class="filters" title="click to toggle"><span class="preview">${esc(JSON.stringify(j.filters))}</span></td>
-      <td class="nowrap"><span class="pill ${j.status}">${j.status}</span></td>
-      <td class="right mono nowrap">${j.row_count.toLocaleString()}</td>
-      <td class="right mono muted nowrap">${fmtBytes(j.bytes)}</td>
+      <td class="filters" title="click to toggle">${esc(JSON.stringify(j.filters))}</td>
+      <td><span class="pill ${j.status}">${j.status}</span></td>
+      <td class="right mono">${j.row_count.toLocaleString()}</td>
+      <td class="right mono muted">${fmtBytes(j.bytes)}</td>
       <td class="muted">${j.error_class || ""}</td>
-      <td class="jobid mono muted nowrap" title="${j.job_id} — click to copy">${j.job_id.slice(0, 8)}…</td>
+      <td class="jobid mono muted" title="${j.job_id} — click to copy">${j.job_id.slice(0, 8)}…</td>
     </tr>
   `).join("") || `<tr><td colspan="9" class="muted">no extracts</td></tr>`;
 
-  // attach the parsed filters object to each cell, then wire click-to-expand
+  // filters: click to expand / collapse
   document.querySelectorAll("#ex-body td.filters").forEach((td, i) => {
     td._filters = jobs[i].filters;
     td.onclick = () => {
       td.classList.toggle("expanded");
-      const span = td.querySelector(".preview");
-      span.textContent = td.classList.contains("expanded")
+      td.textContent = td.classList.contains("expanded")
         ? JSON.stringify(td._filters, null, 2)
         : JSON.stringify(td._filters);
     };
   });
 
-  // jobid: click to copy full UUID
+  // job_id: click to copy full UUID
   document.querySelectorAll("#ex-body td.jobid").forEach((td, i) => {
-    td.style.cursor = "copy";
     td.onclick = async () => {
       try {
         await navigator.clipboard.writeText(jobs[i].job_id);

@@ -1,15 +1,12 @@
 """The extract pipeline — the one place where every layer meets.
 
-A single function: given a job_id, load the job row, run the extract, update
-the job row. The router and the worker both treat this as a black box.
-
 Memory rule: only one batch's worth of rows is alive at any time. The file on
 disk grows; nothing else does.
 """
 
 import hashlib
 from datetime import datetime, timedelta, timezone
-from typing import BinaryIO
+from typing import Any, BinaryIO
 
 from sqlalchemy import select, update
 
@@ -38,11 +35,9 @@ class ExtractTooLarge(Exception):
 
 
 class _HashingFile:
-    """Wraps a binary file so every write also feeds a hash + a byte counter."""
-
-    def __init__(self, fh: BinaryIO, hasher: "hashlib._Hash") -> None:
+    def __init__(self, fh: BinaryIO, h: "hashlib._Hash") -> None:
         self._fh = fh
-        self._hasher = hasher
+        self._hasher = h
         self.bytes_written = 0
 
     def write(self, data: bytes) -> int:
@@ -51,8 +46,9 @@ class _HashingFile:
         self.bytes_written += n
         return n
 
-    def flush(self) -> None:
-        self._fh.flush()
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
 
 
 async def _load_job(job_id: str) -> Job:
@@ -64,13 +60,7 @@ async def _load_job(job_id: str) -> Job:
 
 
 async def _claim(job_id: str) -> None:
-    async with session() as s:
-        await s.execute(
-            update(Job)
-            .where(Job.id == job_id, Job.status == JobStatus.queued)
-            .values(status=JobStatus.running, started_at=datetime.now(timezone.utc))
-        )
-        await s.commit()
+    await _update_job(job_id, status=JobStatus.running, started_at=_utcnow())
 
 
 async def _check_cancel(job_id: str) -> bool:
@@ -81,49 +71,9 @@ async def _check_cancel(job_id: str) -> bool:
         return bool(flag)
 
 
-async def _mark_succeeded(
-    job_id: str, row_count: int, byte_count: int, sha: str
-) -> None:
-    s_ = settings()
-    expires = datetime.now(timezone.utc) + timedelta(hours=s_.extract_retention_hours)
+async def _update_job(job_id: str, **values: Any) -> None:
     async with session() as s:
-        await s.execute(
-            update(Job)
-            .where(Job.id == job_id)
-            .values(
-                status=JobStatus.succeeded,
-                row_count=row_count,
-                bytes=byte_count,
-                file_sha256=sha,
-                finished_at=datetime.now(timezone.utc),
-                expires_at=expires,
-            )
-        )
-        await s.commit()
-
-
-async def _mark_failed(job_id: str, exc: BaseException) -> None:
-    async with session() as s:
-        await s.execute(
-            update(Job)
-            .where(Job.id == job_id)
-            .values(
-                status=JobStatus.failed,
-                error_class=type(exc).__name__,
-                error_message=str(exc)[:2000],
-                finished_at=datetime.now(timezone.utc),
-            )
-        )
-        await s.commit()
-
-
-async def _mark_cancelled(job_id: str) -> None:
-    async with session() as s:
-        await s.execute(
-            update(Job)
-            .where(Job.id == job_id)
-            .values(status=JobStatus.cancelled, finished_at=datetime.now(timezone.utc))
-        )
+        await s.execute(update(Job).where(Job.id == job_id).values(**values))
         await s.commit()
 
 
@@ -133,13 +83,13 @@ async def run(job_id: str) -> None:
     ds = registry.get(job.dataset)
     filters = registry.validate_filters(ds, job.filters)
 
-    s_ = settings()
+    cfg = settings()
     paths.ensure_job_dir(job_id)
     part = paths.partial_path(job_id)
 
     await _claim(job_id)
     extracts_started.labels(dataset=ds.name).inc()
-    started = datetime.now(timezone.utc)
+    started = _utcnow()
     row_count = 0
     hasher = hashlib.sha256()
 
@@ -150,21 +100,28 @@ async def run(job_id: str) -> None:
                 writer = CsvBatchWriter(hashing, ds.columns)  # type: ignore[arg-type]
                 async with source_connection() as conn:
                     async for batch in paginator.iter_batches(
-                        conn, ds, filters, s_.extract_batch_size
+                        conn, ds, filters, cfg.extract_batch_size
                     ):
                         if await _check_cancel(job_id):
                             raise ExtractCancelled()
                         writer.write_batch(batch)
-                        raw_fh.flush()
                         row_count += len(batch)
-                        if row_count > s_.extract_max_rows:
+                        if row_count > cfg.extract_max_rows:
                             raise ExtractTooLarge(
-                                f"exceeded max rows ({s_.extract_max_rows})"
+                                f"exceeded max rows ({cfg.extract_max_rows})"
                             )
                 byte_count = hashing.bytes_written
 
         paths.atomic_promote(job_id)
-        await _mark_succeeded(job_id, row_count, byte_count, hasher.hexdigest())
+        await _update_job(
+            job_id,
+            status=JobStatus.succeeded,
+            row_count=row_count,
+            bytes=byte_count,
+            file_sha256=hasher.hexdigest(),
+            finished_at=_utcnow(),
+            expires_at=_utcnow() + timedelta(hours=cfg.extract_retention_hours),
+        )
         extracts_finished.labels(dataset=ds.name, status="succeeded").inc()
         extract_rows.labels(dataset=ds.name).inc(row_count)
         log_.info(
@@ -172,15 +129,21 @@ async def run(job_id: str) -> None:
             dataset=ds.name,
             rows=row_count,
             bytes=byte_count,
-            elapsed_s=(datetime.now(timezone.utc) - started).total_seconds(),
+            elapsed_s=(_utcnow() - started).total_seconds(),
         )
     except ExtractCancelled:
         paths.cleanup_job(job_id)
-        await _mark_cancelled(job_id)
+        await _update_job(job_id, status=JobStatus.cancelled, finished_at=_utcnow())
         extracts_finished.labels(dataset=ds.name, status="cancelled").inc()
         log_.info("extract_cancelled", dataset=ds.name, rows=row_count)
     except Exception as exc:
-        await _mark_failed(job_id, exc)
+        await _update_job(
+            job_id,
+            status=JobStatus.failed,
+            error_class=type(exc).__name__,
+            error_message=str(exc)[:2000],
+            finished_at=_utcnow(),
+        )
         extracts_finished.labels(dataset=ds.name, status="failed").inc()
         log_.error("extract_failed", dataset=ds.name, error=str(exc))
         raise

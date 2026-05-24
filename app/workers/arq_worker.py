@@ -1,3 +1,5 @@
+from typing import Any
+
 from arq.connections import RedisSettings
 
 from app.config import settings
@@ -5,11 +7,11 @@ from app.extract import pipeline
 from app.observability.logging import configure as configure_logging
 
 
-async def run_extract(ctx: dict, job_id: str) -> None:  # type: ignore[type-arg]
+async def run_extract(ctx: dict[str, Any], job_id: str) -> None:
     await pipeline.run(job_id)
 
 
-async def startup(ctx: dict) -> None:  # type: ignore[type-arg]
+async def startup(ctx: dict[str, Any]) -> None:
     configure_logging()
 
 
@@ -18,5 +20,5 @@ class WorkerSettings:
     on_startup = startup
     redis_settings = RedisSettings.from_dsn(settings().redis_dsn)
     max_jobs = 4
-    job_timeout = 60 * 60  # 1 hour per extract; tune later
-    keep_result = 0  # we keep our own state in PG; no need to keep in Redis
+    job_timeout = 60 * 60
+    keep_result = 0  # we own state in Postgres; Redis result store would duplicate

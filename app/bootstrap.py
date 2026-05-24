@@ -1,21 +1,14 @@
-"""Bootstrap entrypoint for local dev: seed/ensure the bootstrap admin key.
+"""Seed/ensure the bootstrap admin key from BOOTSTRAP_API_KEY.
 
-Usage (one-shot, run after `alembic upgrade head`):
-    uv run python -m app.bootstrap
-
-The bootstrap key is always:
-    - is_admin = true
-    - datasets = ["*"]
-    - expires_at = NULL  (never expires)
-
-Use this key to issue real keys via POST /v1/admin/api-keys.
+Runs on every app container start. Idempotent: if the key already exists,
+it is reset to admin/["*"]/no-expiry so dev environments don't drift.
 """
 
 import asyncio
 
 from sqlalchemy import select
 
-from app.auth.keys import PREFIX, _hasher
+from app.auth.keys import hasher, split_key
 from app.config import settings
 from app.db.meta.engine import session
 from app.db.meta.models import ApiKey
@@ -26,21 +19,17 @@ async def _main() -> None:
     if not raw:
         print("BOOTSTRAP_API_KEY not set; skipping")
         return
-    if not raw.startswith(PREFIX):
-        print(f"BOOTSTRAP_API_KEY must start with {PREFIX!r}; skipping")
-        return
-    rest = raw[len(PREFIX):]
-    key_id, _, secret = rest.partition("_")
-    if not key_id or not secret:
+    parts = split_key(raw)
+    if parts is None:
         print("BOOTSTRAP_API_KEY malformed; skipping")
         return
+    key_id, secret = parts
 
     async with session() as s:
         existing = (
             await s.execute(select(ApiKey).where(ApiKey.key_id == key_id))
         ).scalar_one_or_none()
         if existing is not None:
-            # ensure admin + * scope even on older seed rows
             existing.is_admin = True
             existing.datasets = ["*"]
             existing.disabled_at = None
@@ -51,7 +40,7 @@ async def _main() -> None:
         s.add(
             ApiKey(
                 key_id=key_id,
-                secret_hash=_hasher.hash(secret),
+                secret_hash=hasher.hash(secret),
                 label="bootstrap-dev",
                 datasets=["*"],
                 is_admin=True,

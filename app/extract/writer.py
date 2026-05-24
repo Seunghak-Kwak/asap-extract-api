@@ -1,12 +1,7 @@
-"""CSV writer that serialises one batch at a time.
+"""CSV batch writer.
 
-Operates on a binary file handle so the worker can `fsync` it. Each row is
-emitted via the stdlib `csv` module against an in-memory buffer (StringIO)
-*per batch*, then written out as bytes. Memory holds at most one batch.
-
-JSON-typed columns (we know about them from the Dataset's schema indirectly —
-here we just stringify dicts/lists) are encoded as compact JSON strings so they
-survive a round-trip through CSV.
+JSON dict/list values are encoded as compact JSON strings so they survive
+a round-trip through CSV.
 """
 
 import csv

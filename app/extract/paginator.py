@@ -31,12 +31,11 @@ def _build_query(
     where: list[str] = []
     params: list[Any] = []
 
-    # required time range
     if "from" in ds.required_filters:
-        where.append("`occurred_at` >= %s")
+        where.append(f"`{ds.time_column}` >= %s")
         params.append(filters["from"])
     if "to" in ds.required_filters:
-        where.append("`occurred_at` < %s")
+        where.append(f"`{ds.time_column}` < %s")
         params.append(filters["to"])
 
     for k in ds.optional_filters:

@@ -23,6 +23,7 @@ class Dataset:
     table: str
     columns: list[str]
     sort_columns: list[str]  # keyset; must be indexed in source DB
+    time_column: str  # column that `from`/`to` filters apply to
     required_filters: list[str]
     optional_filters: list[str]
     # filters that may be a list (IN clause). All others are scalars.
@@ -82,6 +83,7 @@ EVENTS = Dataset(
     table="events",
     columns=["id", "occurred_at", "category", "user_id", "payload"],
     sort_columns=["occurred_at", "id"],
+    time_column="occurred_at",
     required_filters=["from", "to"],
     optional_filters=["category", "user_id"],
     list_filters={"category", "user_id"},

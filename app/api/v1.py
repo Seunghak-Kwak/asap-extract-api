@@ -73,7 +73,6 @@ async def create_extract(
     key: ApiKey = ApiKeyDep,
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
 ) -> ExtractResponse:
-    # validate dataset + filters up front so we fail loudly before we enqueue
     ds = registry.get(body.dataset)
     if not key.allows_dataset(body.dataset):
         raise HTTPException(
@@ -85,7 +84,6 @@ async def create_extract(
     except registry.ExtractValidationError as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
 
-    # per-key in-flight cap: protects the queue from a single key flooding.
     # Soft cap (TOCTOU race acceptable — worst case one over the limit).
     cap = settings().extract_max_inflight_per_key
     async with session() as s:
@@ -120,21 +118,18 @@ async def create_extract(
         try:
             await s.commit()
         except IntegrityError:
-            # idempotency replay
             await s.rollback()
             existing = (
                 await s.execute(
-                    Job.__table__.select().where(
-                        (Job.api_key_id == key.id)
-                        & (Job.idempotency_key == idempotency_key)
+                    select(Job).where(
+                        Job.api_key_id == key.id,
+                        Job.idempotency_key == idempotency_key,
                     )
                 )
-            ).first()
+            ).scalar_one_or_none()
             if existing is None:
                 raise
-            row = await s.get(Job, existing.id)
-            assert row is not None
-            return _to_response(row)
+            return _to_response(existing)
         await s.refresh(job)
 
     pool = await _arq()
