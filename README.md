@@ -212,11 +212,26 @@ REGISTRY = {
 
 http://localhost:8080/admin 에 접속해서 admin 키로 로그인하면:
 
-- **Overview**: 상태별 잡 카운트, 활성 키 수, 최근 24시간 잡, 누적 추출 행 수
+- **Overview**: 상태별 잡 카운트, 활성 키 수, 최근 24시간 잡, 누적 추출 행 수, **키별 in-flight cap**
 - **Issue API key**: 라벨/datasets/만료일/admin 여부를 입력해 즉시 발급. `full_key`는 발급 직후 한 번만 노출.
-- **Recent extracts**: API 키별 / 상태별 / 데이터셋별 필터로 추출 이력 조회.
+- **Recent extracts**: API 키별 / 상태별 / 데이터셋별 필터로 추출 이력 조회. **각 행에 사용자가 보낸 `filters` JSON이 보임** — 어떤 기간/카테고리로 뽑았는지 한눈에.
 
 키는 페이지 sessionStorage에만 보관되며, 탭을 닫으면 사라집니다.
+
+## Rate limit — 키별 in-flight cap
+
+같은 키가 큐를 폭주시키는 것을 막기 위해 **한 키가 동시에 `queued + running` 상태로 가질 수 있는 잡 수**에 상한이 있습니다 (기본 `5`, `.env`의 `EXTRACT_MAX_INFLIGHT_PER_KEY`로 변경).
+
+상한을 넘으면:
+```
+HTTP/1.1 429 Too Many Requests
+Retry-After: 10
+{"detail":"in-flight cap reached (5/5); wait for jobs to finish"}
+```
+
+잡이 끝나거나 cancel되면 카운터가 떨어지면서 자동 회복. 클라이언트 측에서는 `Retry-After` 만큼 대기 후 재시도하면 됩니다.
+
+> 소프트 캡입니다 — 동시 POST 두 개가 같은 순간에 카운트를 읽으면 일시적으로 cap+1까지 될 수 있어요. RPS 단위의 강한 제한이 필요해지면 별도 미들웨어/리버스 프록시 레벨에서 추가.
 
 ## API 키 관리 (관리자 전용)
 

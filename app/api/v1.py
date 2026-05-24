@@ -5,7 +5,7 @@ from typing import Any
 from arq.connections import ArqRedis, RedisSettings, create_pool
 from fastapi import APIRouter, Header, HTTPException, Response, status
 from pydantic import BaseModel, Field
-from sqlalchemy import update
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 
 from app.api.deps import ApiKeyDep
@@ -83,6 +83,27 @@ async def create_extract(
         registry.validate_filters(ds, body.filters)
     except registry.ExtractValidationError as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+
+    # per-key in-flight cap: protects the queue from a single key flooding.
+    # Soft cap (TOCTOU race acceptable — worst case one over the limit).
+    cap = settings().extract_max_inflight_per_key
+    async with session() as s:
+        inflight = (
+            await s.execute(
+                select(func.count())
+                .select_from(Job)
+                .where(
+                    Job.api_key_id == key.id,
+                    Job.status.in_([JobStatus.queued, JobStatus.running]),
+                )
+            )
+        ).scalar_one()
+    if inflight >= cap:
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            f"in-flight cap reached ({inflight}/{cap}); wait for jobs to finish",
+            headers={"Retry-After": "10"},
+        )
 
     job_id = str(uuid.uuid4())
     job = Job(

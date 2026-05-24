@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     extract_batch_size: int = Field(default=10000, ge=100, le=100000)
     extract_max_rows: int = Field(default=50_000_000, ge=1)
     extract_retention_hours: int = Field(default=72, ge=1)
+    extract_max_inflight_per_key: int = Field(default=5, ge=1, le=1000)
 
     bootstrap_api_key: str | None = None
 

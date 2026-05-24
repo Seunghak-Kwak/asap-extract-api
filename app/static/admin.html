@@ -39,7 +39,8 @@
   .tile .label { color: var(--muted); font-size: 12px; }
   .tile .value { font-size: 22px; font-weight: 600; margin-top: 4px; }
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  td.filters { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; max-width: 360px; white-space: pre-wrap; word-break: break-all; color: #aab2bd; }
   th { color: var(--muted); font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: .03em; }
   td.mono, code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
   .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; border: 1px solid var(--border); }
@@ -141,7 +142,7 @@
       <table>
         <thead>
           <tr>
-            <th>created</th><th>key</th><th>dataset</th><th>status</th>
+            <th>created</th><th>key</th><th>dataset</th><th>filters</th><th>status</th>
             <th class="right">rows</th><th class="right">bytes</th>
             <th>error</th><th>job_id</th>
           </tr>
@@ -227,6 +228,7 @@ async function loadStats() {
     ["Last 24h", s.jobs_last_24h],
     ["Active keys", s.active_keys],
     ["Total rows", s.rows_extracted_total.toLocaleString()],
+    ["In-flight cap / key", s.inflight_per_key_limit],
     ...Object.entries(s.jobs_by_status).map(([k, v]) => [k, v]),
   ];
   $("tiles").innerHTML = tiles.map(([l, v]) =>
@@ -285,18 +287,20 @@ async function loadExtracts() {
   if (d) params.set("dataset", d);
   params.set("limit", "100");
   const jobs = await api("/v1/admin/extracts?" + params);
+  const esc = (s) => s.replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
   $("ex-body").innerHTML = jobs.map(j => `
     <tr>
       <td class="nowrap muted">${fmtDate(j.created_at)}</td>
       <td><span class="mono">${j.key_id}</span> <span class="muted">${j.key_label}</span></td>
       <td>${j.dataset}</td>
+      <td class="filters">${esc(JSON.stringify(j.filters))}</td>
       <td><span class="pill ${j.status}">${j.status}</span></td>
       <td class="right mono">${j.row_count.toLocaleString()}</td>
       <td class="right mono muted">${fmtBytes(j.bytes)}</td>
       <td class="muted">${j.error_class || ""}</td>
       <td class="mono muted" style="font-size:11px;">${j.job_id}</td>
     </tr>
-  `).join("") || `<tr><td colspan="8" class="muted">no extracts</td></tr>`;
+  `).join("") || `<tr><td colspan="9" class="muted">no extracts</td></tr>`;
 }
 
 $("newkey-form").onsubmit = async (e) => {

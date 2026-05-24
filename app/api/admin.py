@@ -6,6 +6,7 @@ from sqlalchemy import func, select, update
 
 from app.api.deps import AdminDep
 from app.auth.keys import _hasher, _make_pair
+from app.config import settings
 from app.db.meta.engine import session
 from app.db.meta.models import ApiKey, Job, JobStatus
 from app.extract.registry import REGISTRY
@@ -134,6 +135,7 @@ class StatsResponse(BaseModel):
     rows_extracted_total: int
     active_keys: int
     jobs_last_24h: int
+    inflight_per_key_limit: int
 
 
 @router.get("/stats", response_model=StatsResponse)
@@ -170,6 +172,7 @@ async def stats(_admin: ApiKey = AdminDep) -> StatsResponse:
         rows_extracted_total=int(total_rows),
         active_keys=int(active_keys),
         jobs_last_24h=int(recent),
+        inflight_per_key_limit=settings().extract_max_inflight_per_key,
     )
 
 
@@ -178,6 +181,7 @@ class JobInfo(BaseModel):
     key_id: str
     key_label: str
     dataset: str
+    filters: dict
     status: JobStatus
     row_count: int
     bytes: int
@@ -219,6 +223,7 @@ async def list_extracts(
             key_id=kid,
             key_label=klabel,
             dataset=j.dataset,
+            filters=j.filters,
             status=JobStatus(j.status),
             row_count=j.row_count,
             bytes=j.bytes,
