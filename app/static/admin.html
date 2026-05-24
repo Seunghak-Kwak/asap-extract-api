@@ -39,8 +39,21 @@
   .tile .label { color: var(--muted); font-size: 12px; }
   .tile .value { font-size: 22px; font-weight: 600; margin-top: 4px; }
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
-  td.filters { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; max-width: 360px; white-space: pre-wrap; word-break: break-all; color: #aab2bd; }
+  th, td {
+    text-align: left; padding: 10px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+    line-height: 20px;  /* fixed px so monospace/sans cells share the same baseline */
+  }
+  td.filters {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px;
+    line-height: 20px;
+    max-width: 360px;
+    white-space: pre-wrap;
+    word-break: break-all;
+    color: #aab2bd;
+  }
   th { color: var(--muted); font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: .03em; }
   td.mono, code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
   .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; border: 1px solid var(--border); }
