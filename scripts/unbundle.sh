@@ -21,17 +21,9 @@ rm images.tar
 if [[ ! -f .env ]]; then
     echo "==> .env not present, copying from .env.example"
     cp .env.example .env
-    echo
-    echo ".env was just created — edit it before starting:"
-    echo "  SOURCE_HOST / SOURCE_PORT / SOURCE_USER / SOURCE_PASSWORD / SOURCE_DB"
-    echo "  BOOTSTRAP_API_KEY        # consider removing in prod"
-    echo
-    echo "Then start the stack with:"
-    echo "  docker compose -f deploy/docker-compose.yml up -d --no-build"
-    exit 0
 fi
 
-echo "==> .env present, bringing stack up"
+echo "==> bringing stack up"
 docker compose -f deploy/docker-compose.yml up -d --no-build
 
 echo
