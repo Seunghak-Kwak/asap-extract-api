@@ -12,7 +12,7 @@ from app.observability.middleware import RequestIdMiddleware
 
 def build_app() -> FastAPI:
     configure_logging()
-    app = FastAPI(title="Extract API", version="0.1.0")
+    app = FastAPI(title="ASAP Extract API", version="0.1.0")
     app.add_middleware(RequestIdMiddleware)
     app.include_router(v1_router)
     app.include_router(admin_router)

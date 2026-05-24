@@ -19,7 +19,7 @@ async def startup(ctx: dict[str, Any]) -> None:
 
 class WorkerSettings:
     functions = [run_extract, sweep_expired]  # sweep_expired also callable as one-off
-    cron_jobs = [cron(sweep_expired, minute={0, 30})]  # every 30 minutes
+    cron_jobs = [cron(sweep_expired, hour=2, minute=0)]  # every 30 minutes
     on_startup = startup
     redis_settings = RedisSettings.from_dsn(settings().redis_dsn)
     max_jobs = 4

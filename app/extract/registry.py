@@ -23,15 +23,22 @@ class Dataset:
     table: str
     columns: list[str]
     sort_columns: list[str]  # keyset; must be indexed in source DB
-    time_column: str  # column that `from`/`to` filters apply to
     required_filters: list[str]
     optional_filters: list[str]
     # filters that may be a list (IN clause). All others are scalars.
     list_filters: set[str] = field(default_factory=set)
+    # Only required if `from`/`to` appear in required_filters or optional_filters.
+    time_column: str | None = None
 
     @property
     def allowed_filters(self) -> set[str]:
         return set(self.required_filters) | set(self.optional_filters)
+
+    def __post_init__(self) -> None:
+        if ("from" in self.allowed_filters or "to" in self.allowed_filters) and not self.time_column:
+            raise ValueError(
+                f"dataset '{self.name}' declares from/to filter but no time_column"
+            )
 
 
 # --- Filter validation ---------------------------------------------------------

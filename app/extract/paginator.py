@@ -31,10 +31,10 @@ def _build_query(
     where: list[str] = []
     params: list[Any] = []
 
-    if "from" in ds.required_filters:
+    if "from" in filters:
         where.append(f"`{ds.time_column}` >= %s")
         params.append(filters["from"])
-    if "to" in ds.required_filters:
+    if "to" in filters:
         where.append(f"`{ds.time_column}` < %s")
         params.append(filters["to"])
 
