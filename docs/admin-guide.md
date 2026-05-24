@@ -10,8 +10,15 @@
 
 ```bash
 cp .env.example .env
+
+# 로컬 dev (MySQL 더미 소스 포함)
+docker compose --profile dev -f deploy/docker-compose.yml up -d --build
+
+# 운영 (.env의 SOURCE_*가 실제 SingleStore를 가리키게 설정한 뒤)
 docker compose -f deploy/docker-compose.yml up -d --build
 ```
+
+`--profile dev`가 있을 때만 mysql 컨테이너(개발용 더미 소스 + 10만 시드 데이터)가 함께 뜹니다. 운영에서는 빠짐.
 
 뜨는 컨테이너:
 
@@ -285,6 +292,42 @@ REGISTRY = {
 원격 DB에 `(ordered_at, id)` 복합 인덱스가 반드시 있어야 합니다 — 없으면 keyset pagination이 풀스캔으로 떨어져 메모리/시간이 폭발합니다.
 
 라우터/워커는 손댈 필요 없음.
+
+### 에어갭(인터넷 차단) 환경 배포
+
+외부망에서 모든 의존을 굽고 통째로 옮기는 번들 방식을 권장합니다. 두 스크립트가 전 과정을 자동화합니다.
+
+**외부망 (인터넷 가능)**:
+```bash
+git clone https://github.com/Seunghak-Kwak/asap-extract-api
+cd asap-extract-api
+./scripts/bundle.sh                  # 운영용 번들 (mysql 제외)
+./scripts/bundle.sh --with-mysql     # dev 패리티가 필요할 때만
+# → dist/asap-extract-api-bundle-<UTC>.tar.gz 생성
+
+# 사내망과 아키텍처가 다르면 (예: M1 → Linux x86_64)
+PLATFORM=linux/amd64 ./scripts/bundle.sh
+```
+
+**내부망**:
+```bash
+tar -xzf asap-extract-api-bundle-*.tar.gz
+cd asap-extract-api
+./scripts/unbundle.sh
+# .env 가 없으면 .env.example을 복사하고 멈춤 → SOURCE_*를 채운 뒤
+docker compose -f deploy/docker-compose.yml up -d --no-build
+```
+
+번들 안에 들어있는 것:
+- 빌드 끝난 `extract-api-app` / `extract-api-worker` 이미지
+- 베이스 이미지(`postgres`, `redis`, `nginx`, 옵션으로 `mysql`)
+- 소스 코드 (`git ls-files` 기준 — 실제 추적 파일만)
+- `images.tar` (위 이미지들을 `docker save`)
+
+번들에서 빠지는 것: `.env`, `data/`, `.git`, `dist/`, 캐시 디렉터리.
+`.env`는 내부망에서 `.env.example`을 복사·편집해서 만드세요 (시크릿이 외부로 새지 않게).
+
+운영용 번들 크기 ≈ 400–500 MB 압축. `--with-mysql`을 붙이면 약 +500 MB.
 
 ### 운영 환경으로 전환
 

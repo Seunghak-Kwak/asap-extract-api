@@ -29,6 +29,8 @@ services:
   mysql:
     # Stand-in for the remote SingleStore. SingleStore speaks the MySQL wire
     # protocol; for local development we point SOURCE_* at this container.
+    # In prod (SingleStore configured in .env), omit `--profile dev` to skip.
+    profiles: ["dev"]
     image: mysql:8.0
     environment:
       MYSQL_ROOT_PASSWORD: root
@@ -54,8 +56,6 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      mysql:
-        condition: service_healthy
     volumes:
       # Results are bind-mounted so operators can browse them directly:
       # <repo>/data/extracts/<job_id>/result.csv
@@ -79,8 +79,6 @@ services:
       postgres:
         condition: service_healthy
       redis:
-        condition: service_healthy
-      mysql:
         condition: service_healthy
     volumes:
       - ../data/extracts:/var/lib/extracts
