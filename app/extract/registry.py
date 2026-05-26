@@ -20,12 +20,17 @@ class ExtractValidationError(ValueError):
 @dataclass(frozen=True)
 class Dataset:
     """
-    sort_columns: keyset pagination key. MUST be uniquely identifying per row
-        and indexed in the source DB. The last element should be the primary
-        key (or another unique column) — otherwise rows that share the leading
-        sort values across batch boundaries will be silently dropped.
-        Good:  ["occurred_at", "id"]   ← id is PK, tuple is unique
-        Bad:   ["created_at"]          ← duplicates lose rows at the boundary
+    sort_columns: pagination key. Indexed in the source DB.
+
+    sort_unique (default True): the sort_columns tuple is unique per row,
+        so the paginator uses keyset — `WHERE (sort) > (cursor) LIMIT N` —
+        which is O(N) per batch regardless of table size.
+        Good:  ["occurred_at", "id"]  with sort_unique=True
+
+    Set sort_unique=False ONLY for tables with no PK / unique column. The
+        paginator falls back to LIMIT/OFFSET, which works but re-scans
+        every prior row each batch. Acceptable for hundreds of thousands;
+        not for tens of millions+. Add a unique sort column if you can.
     """
     name: str
     table: str
@@ -37,6 +42,7 @@ class Dataset:
     list_filters: set[str] = field(default_factory=set)
     # Only required if `from`/`to` appear in required_filters or optional_filters.
     time_column: str | None = None
+    sort_unique: bool = True
 
     @property
     def allowed_filters(self) -> set[str]:

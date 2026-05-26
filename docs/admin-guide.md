@@ -330,7 +330,7 @@ REGISTRY = {
 
 #### sort_columns 유일성 — 중요
 
-`sort_columns`로 만든 튜플이 row별로 **유일**해야 합니다. 마지막에 반드시 PK(또는 unique 컬럼)를 두세요.
+기본 모드(keyset)는 `sort_columns`로 만든 튜플이 row별로 **유일**해야 합니다. 마지막에 PK(또는 unique 컬럼)를 두세요.
 
 ```python
 sort_columns=["created_at", "id"]   # ✅ id가 PK라면 (created_at, id)는 항상 유일
@@ -338,6 +338,30 @@ sort_columns=["created_at"]         # ❌ created_at이 중복될 수 있으면 
 ```
 
 이유: 배치 사이에서 `WHERE (sort) > (last_cursor)`로 다음 배치를 가져오는데, sort 튜플이 같은 row 여럿이 있으면 strict `>` 비교에서 일부가 누락됩니다. 추출 결과 row 수가 실제 테이블보다 적으면 **이 문제일 가능성이 가장 높음**.
+
+#### PK/unique 컬럼이 없는 테이블 — `sort_unique=False`
+
+레거시 테이블에 어떤 unique 컬럼도 없다면 OFFSET 페이지네이션으로 폴백:
+
+```python
+LEGACY = Dataset(
+    name="legacy",
+    table="legacy_table",
+    columns=[...],
+    sort_columns=["created_at"],   # 중복돼도 OK
+    sort_unique=False,             # ← keyset 안 쓰고 LIMIT/OFFSET 사용
+    required_filters=["from", "to"],
+    optional_filters=[],
+    time_column="created_at",
+)
+```
+
+OFFSET 모드 trade-off:
+- ✅ 어떤 테이블이든 동작 (unique 보장 불필요)
+- ⚠ **추출 후반부로 갈수록 느려짐** — N번째 배치에서 N×batch_size 행을 건너뛰어야 하므로 누적 비용 O(N²). SingleStore 같은 분산 엔진에선 더 두드러짐.
+- ⚠ **추출 중 소스 DB가 변경되면 row 중복/누락 발생** — INSERT/DELETE가 offset을 흔들기 때문. 정적 테이블이나 read-only 윈도우에서만 안전.
+
+가이드라인: **수십만 행까지는 OFFSET 무난**, 그 이상이면 가능하면 unique 컬럼을 추가하거나 별도 ETL 단계에서 PK를 부여한 staging 테이블을 만들어 추출하세요.
 
 ### 에어갭(인터넷 차단) 환경 배포
 
