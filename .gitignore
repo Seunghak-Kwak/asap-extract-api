@@ -13,3 +13,7 @@ __pycache__/
 /dist/
 uv.lock
 extract-data/
+# corporate CA bundles (kept out of git; scaffold has .gitkeep + README)
+deploy/extra-ca/*
+!deploy/extra-ca/.gitkeep
+!deploy/extra-ca/README.md

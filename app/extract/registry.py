@@ -96,6 +96,27 @@ EVENTS = Dataset(
     list_filters={"category", "user_id"},
 )
 
+ORDERS = Dataset(
+    name="orders",
+    table="orders",
+    columns=[...],
+    sort_columns=["id"],            # id만으로 keyset
+    time_column="ordered_at",
+    required_filters=[],
+    optional_filters=["from", "to", "status"],
+)
+
+COUNTRIES = Dataset(
+    name="countries",
+    table="countries",
+    columns=["code", "name", "region"],
+    sort_columns=["code"],
+    required_filters=[],
+    optional_filters=["region"],
+    # time_column 생략 — 없어도 OK
+)
+
+
 REGISTRY: dict[str, Dataset] = {
     EVENTS.name: EVENTS,
 }
