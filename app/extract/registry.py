@@ -19,10 +19,18 @@ class ExtractValidationError(ValueError):
 
 @dataclass(frozen=True)
 class Dataset:
+    """
+    sort_columns: keyset pagination key. MUST be uniquely identifying per row
+        and indexed in the source DB. The last element should be the primary
+        key (or another unique column) — otherwise rows that share the leading
+        sort values across batch boundaries will be silently dropped.
+        Good:  ["occurred_at", "id"]   ← id is PK, tuple is unique
+        Bad:   ["created_at"]          ← duplicates lose rows at the boundary
+    """
     name: str
     table: str
     columns: list[str]
-    sort_columns: list[str]  # keyset; must be indexed in source DB
+    sort_columns: list[str]
     required_filters: list[str]
     optional_filters: list[str]
     # filters that may be a list (IN clause). All others are scalars.

@@ -8,6 +8,7 @@ import csv
 import io
 import json
 from datetime import date, datetime
+from decimal import Decimal
 from typing import Any, BinaryIO
 
 
@@ -18,6 +19,13 @@ def _stringify(value: Any) -> str:
         return json.dumps(value, separators=(",", ":"), ensure_ascii=False)
     if isinstance(value, (datetime, date)):
         return value.isoformat()
+    if isinstance(value, Decimal):
+        # Avoid scientific notation (str(Decimal('0E-20')) == '0E-20').
+        # Render fixed-point, then strip trailing zeros/dot for clean output.
+        s = format(value, "f")
+        if "." in s:
+            s = s.rstrip("0").rstrip(".")
+        return s or "0"
     return str(value)
 
 

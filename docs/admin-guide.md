@@ -328,6 +328,17 @@ REGISTRY = {
 
 라우터/워커는 손댈 필요 없음.
 
+#### sort_columns 유일성 — 중요
+
+`sort_columns`로 만든 튜플이 row별로 **유일**해야 합니다. 마지막에 반드시 PK(또는 unique 컬럼)를 두세요.
+
+```python
+sort_columns=["created_at", "id"]   # ✅ id가 PK라면 (created_at, id)는 항상 유일
+sort_columns=["created_at"]         # ❌ created_at이 중복될 수 있으면 row 누락 발생
+```
+
+이유: 배치 사이에서 `WHERE (sort) > (last_cursor)`로 다음 배치를 가져오는데, sort 튜플이 같은 row 여럿이 있으면 strict `>` 비교에서 일부가 누락됩니다. 추출 결과 row 수가 실제 테이블보다 적으면 **이 문제일 가능성이 가장 높음**.
+
 ### 에어갭(인터넷 차단) 환경 배포
 
 외부망에서 모든 의존을 굽고 통째로 옮기는 번들 방식을 권장합니다. 두 스크립트가 전 과정을 자동화합니다.

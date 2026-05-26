@@ -1,7 +1,8 @@
 import io
 from datetime import datetime
+from decimal import Decimal
 
-from app.extract.writer import CsvBatchWriter
+from app.extract.writer import CsvBatchWriter, _stringify
 
 
 def test_header_then_rows() -> None:
@@ -27,3 +28,18 @@ def test_none_becomes_empty_field() -> None:
     w.write_batch([{"a": None, "b": "x"}])
     line = buf.getvalue().decode("utf-8").strip().split("\r\n")[1]
     assert line == ",x"
+
+
+def test_decimal_zero_renders_as_zero_not_scientific() -> None:
+    # str(Decimal('0E-20')) == '0E-20' — that broke real-world CSVs.
+    assert _stringify(Decimal("0E-20")) == "0"
+    assert _stringify(Decimal("0")) == "0"
+    assert _stringify(Decimal("0.0000")) == "0"
+
+
+def test_decimal_keeps_significant_digits_without_scientific() -> None:
+    assert _stringify(Decimal("1.5")) == "1.5"
+    assert _stringify(Decimal("1.50")) == "1.5"
+    assert _stringify(Decimal("100")) == "100"
+    assert _stringify(Decimal("-0.25")) == "-0.25"
+    assert _stringify(Decimal("1E10")) == "10000000000"
